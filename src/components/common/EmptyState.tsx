@@ -20,18 +20,18 @@ export function EmptyState({
   icon,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-12 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 mb-4">
-        {icon || <FolderOpen className="h-7 w-7" aria-hidden="true" />}
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-[#070c18]/80 p-12 text-center backdrop-blur-sm">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#29d9ff]/10 text-[#29d9ff] border border-[#29d9ff]/20 mb-4">
+        {icon || <FolderOpen className="h-6 w-6" aria-hidden="true" />}
       </div>
-      <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-      <p className="mt-1 max-w-sm text-sm text-slate-500">{description}</p>
+      <h3 className="text-base font-medium text-slate-100">{title}</h3>
+      <p className="mt-1 max-w-sm text-sm text-slate-400">{description}</p>
       {actionLabel && (
         <div className="mt-6">
           {actionHref ? (
             <Link
               href={actionHref}
-              className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+              className="inline-flex items-center justify-center rounded-full bg-[#29d9ff] px-5 py-2 text-xs font-semibold uppercase tracking-wider text-[#04060a] shadow-sm hover:bg-[#29d9ff]/90 transition-all"
             >
               {actionLabel}
             </Link>
@@ -39,7 +39,7 @@ export function EmptyState({
             <button
               type="button"
               onClick={onAction}
-              className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+              className="inline-flex items-center justify-center rounded-full bg-[#29d9ff] px-5 py-2 text-xs font-semibold uppercase tracking-wider text-[#04060a] shadow-sm hover:bg-[#29d9ff]/90 transition-all"
             >
               {actionLabel}
             </button>

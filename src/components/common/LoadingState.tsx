@@ -13,8 +13,8 @@ export function LoadingState({
 }: LoadingStateProps) {
   const sizeClasses = {
     sm: "w-5 h-5 border-2",
-    md: "w-8 h-8 border-3",
-    lg: "w-12 h-12 border-4",
+    md: "w-8 h-8 border-2",
+    lg: "w-12 h-12 border-3",
   };
 
   return (
@@ -26,9 +26,9 @@ export function LoadingState({
       aria-live="polite"
     >
       <div
-        className={`${sizeClasses[size]} border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-3`}
+        className={`${sizeClasses[size]} border-white/10 border-t-[#29d9ff] rounded-full animate-spin mb-3`}
       />
-      <p className="text-sm font-medium text-slate-600 animate-pulse">{message}</p>
+      <p className="font-mono text-xs tracking-wider text-slate-400 uppercase animate-pulse">{message}</p>
       <span className="sr-only">{message}</span>
     </div>
   );
