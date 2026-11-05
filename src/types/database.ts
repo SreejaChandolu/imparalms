@@ -5,6 +5,7 @@ export interface Profile {
   full_name: string;
   role: UserRole;
   student_id: string | null;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -171,6 +172,7 @@ export type Database = {
           full_name?: string;
           role?: UserRole;
           student_id?: string | null;
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -179,6 +181,7 @@ export type Database = {
           full_name?: string;
           role?: UserRole;
           student_id?: string | null;
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };

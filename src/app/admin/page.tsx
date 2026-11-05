@@ -1,35 +1,101 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getFirstNameAndInitial } from "@/lib/utils";
-import type { Profile, SecurityEvent } from "@/types/database";
 import {
-  LogOut,
   Users,
-  ShieldCheck,
-  ShieldAlert,
-  Database,
-  UserCheck,
   BookOpen,
   Calendar,
-  Activity,
+  CheckCircle2,
+  Clock,
+  Star,
+  LifeBuoy,
+  Radio,
+  ShieldAlert,
+  ArrowRight,
+  UserPlus,
+  Shield,
+  BarChart3,
+  MessageSquare,
+  ChevronRight,
+  AlertTriangle,
+  PlayCircle,
 } from "lucide-react";
 
-export default function AdminDashboard() {
+interface AdminProfile {
+  id: string;
+  full_name: string;
+  role: string;
+}
+
+interface LiveSessionItem {
+  id: string;
+  course_id: string;
+  teacher_id: string;
+  title: string;
+  status: "scheduled" | "live" | "ended";
+  scheduled_at: string;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_minutes: number;
+}
+
+interface SecurityAlertItem {
+  id: string;
+  user_id: string | null;
+  event: string;
+  created_at: string;
+  userName: string;
+}
+
+export default function AdminDashboardPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
+
+  // Platform Metrics
+  const [totalUsersCount, setTotalUsersCount] = useState<number>(0);
+  const [activeCoursesCount, setActiveCoursesCount] = useState<number>(0);
+  const [classesHeld30Days, setClassesHeld30Days] = useState<number>(0);
+  const [platformAttendancePct, setPlatformAttendancePct] = useState<number>(100);
+  const [platformRatingAvg, setPlatformRatingAvg] = useState<number>(0);
+  const [openTicketsCount, setOpenTicketsCount] = useState<number>(0);
+
+  // Live and Upcoming Sessions
+  const [liveSessions, setLiveSessions] = useState<
+    Array<{
+      id: string;
+      title: string;
+      courseTitle: string;
+      teacherName: string;
+      startedAt: string | null;
+    }>
+  >([]);
+
+  const [upcomingSessions, setUpcomingSessions] = useState<
+    Array<{
+      id: string;
+      title: string;
+      courseTitle: string;
+      teacherName: string;
+      scheduledAt: string;
+      durationMinutes: number;
+    }>
+  >([]);
+
+  // Security Events
+  const [securityAlerts, setSecurityAlerts] = useState<SecurityAlertItem[]>([]);
 
   useEffect(() => {
-    async function loadAdminData() {
+    async function loadAdminDashboard() {
       try {
+        setLoading(true);
+
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -39,221 +105,566 @@ export default function AdminDashboard() {
           return;
         }
 
-        // Fetch own profile
-        const { data: prof, error: profError } = await supabase
+        // 1. Fetch Admin Profile
+        const { data: prof } = await supabase
           .from("profiles")
-          .select("*")
+          .select("id, full_name, role")
           .eq("id", user.id)
           .single();
 
-        if (profError) {
-          console.error("Admin dashboard profile fetch error:", profError);
-        } else if (prof) {
-          setProfile(prof as Profile);
+        if (prof) {
+          setAdminProfile(prof as AdminProfile);
         }
 
-        // Admin RLS permits selecting all profiles
-        const { data: allProfiles } = await supabase
+        // 2. Fetch all profiles for user count and name resolution
+        const { data: allProfilesData } = await supabase
           .from("profiles")
-          .select("*")
-          .order("created_at", { ascending: false });
+          .select("id, full_name, role");
 
-        if (allProfiles) {
-          setProfiles(allProfiles as Profile[]);
+        const allProfiles: any[] = (allProfilesData as any[]) || [];
+        setTotalUsersCount(allProfiles.length);
+
+        const profileNameMap = new Map<string, string>();
+        allProfiles.forEach((p: any) => {
+          profileNameMap.set(p.id, p.full_name || "User");
+        });
+
+        // 3. Fetch courses
+        const { data: coursesData } = await supabase
+          .from("courses")
+          .select("id, title, ends_on, teacher_id");
+
+        const coursesList: any[] = (coursesData as any[]) || [];
+        const courseMap = new Map<string, { title: string; teacher_id: string }>();
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        let activeCourses = 0;
+        coursesList.forEach((c: any) => {
+          courseMap.set(c.id, { title: c.title, teacher_id: c.teacher_id });
+          if (!c.ends_on || c.ends_on >= todayStr) {
+            activeCourses += 1;
+          }
+        });
+        setActiveCoursesCount(activeCourses);
+
+        // 4. Fetch live_sessions across platform
+        const { data: sessionsData } = await supabase
+          .from("live_sessions")
+          .select("id, course_id, teacher_id, title, status, scheduled_at, started_at, ended_at, duration_minutes")
+          .order("scheduled_at", { ascending: true });
+
+        const rawSessions: LiveSessionItem[] = (sessionsData as any[]) || [];
+
+        // Compute Classes Held (last 30 days)
+        const nowMs = Date.now();
+        const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+        const endedSessions = rawSessions.filter((s) => s.status === "ended");
+
+        const endedLast30 = endedSessions.filter((s) => {
+          const sTime = new Date(s.started_at || s.scheduled_at).getTime();
+          return nowMs - sTime <= thirtyDaysMs;
+        });
+        setClassesHeld30Days(endedLast30.length);
+
+        // Live sessions right now
+        const currentLive = rawSessions.filter((s) => s.status === "live");
+        setLiveSessions(
+          currentLive.map((s) => {
+            const courseInfo = courseMap.get(s.course_id);
+            const teacherId = s.teacher_id || courseInfo?.teacher_id || "";
+            return {
+              id: s.id,
+              title: s.title,
+              courseTitle: courseInfo?.title || "Course",
+              teacherName: profileNameMap.get(teacherId) || "Instructor",
+              startedAt: s.started_at,
+            };
+          })
+        );
+
+        // Next 5 upcoming scheduled sessions
+        const upcoming = rawSessions
+          .filter((s) => s.status === "scheduled")
+          .filter((s) => new Date(s.scheduled_at).getTime() >= nowMs - 2 * 60 * 60 * 1000)
+          .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+          .slice(0, 5);
+
+        setUpcomingSessions(
+          upcoming.map((s) => {
+            const courseInfo = courseMap.get(s.course_id);
+            const teacherId = s.teacher_id || courseInfo?.teacher_id || "";
+            return {
+              id: s.id,
+              title: s.title,
+              courseTitle: courseInfo?.title || "Course",
+              teacherName: profileNameMap.get(teacherId) || "Instructor",
+              scheduledAt: s.scheduled_at,
+              durationMinutes: s.duration_minutes || 60,
+            };
+          })
+        );
+
+        // 5. Compute Platform Attendance (75% rule)
+        if (endedSessions.length > 0) {
+          const endedSessionIds = endedSessions.map((s) => s.id);
+          const { data: attData } = await supabase
+            .from("attendance")
+            .select("session_id, user_id, total_seconds")
+            .in("session_id", endedSessionIds);
+
+          const { data: enrollmentsData } = await supabase
+            .from("enrollments")
+            .select("course_id, student_id");
+
+          // Course enrolled counts
+          const courseEnrolledMap = new Map<string, number>();
+          ((enrollmentsData as any[]) || []).forEach((e: any) => {
+            courseEnrolledMap.set(e.course_id, (courseEnrolledMap.get(e.course_id) || 0) + 1);
+          });
+
+          // Session durations map
+          const sessionDurMap = new Map<string, number>();
+          endedSessions.forEach((s) => {
+            let effSec = (s.duration_minutes || 60) * 60;
+            if (s.started_at && s.ended_at) {
+              const diff = (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000;
+              if (diff > 0) effSec = Math.round(diff);
+            }
+            sessionDurMap.set(s.id, effSec);
+          });
+
+          // Aggregate student seconds per session
+          const userSessionSecMap = new Map<string, number>();
+          ((attData as any[]) || []).forEach((r: any) => {
+            const key = `${r.session_id}_${r.user_id}`;
+            userSessionSecMap.set(key, (userSessionSecMap.get(key) || 0) + (Number(r.total_seconds) || 0));
+          });
+
+          // Count verified present
+          const sessionPresentCounts = new Map<string, number>();
+          userSessionSecMap.forEach((totalSec, key) => {
+            const [sessId] = key.split("_");
+            const effSec = sessionDurMap.get(sessId) || 3600;
+            if (effSec > 0 && totalSec >= 0.75 * effSec) {
+              sessionPresentCounts.set(sessId, (sessionPresentCounts.get(sessId) || 0) + 1);
+            }
+          });
+
+          let totalPossible = 0;
+          let totalPresent = 0;
+          endedSessions.forEach((s) => {
+            const enrolled = courseEnrolledMap.get(s.course_id) || 0;
+            const present = sessionPresentCounts.get(s.id) || 0;
+            totalPossible += enrolled;
+            totalPresent += present;
+          });
+
+          const avgPct = totalPossible > 0 ? Math.round((totalPresent / totalPossible) * 100) : 100;
+          setPlatformAttendancePct(avgPct);
         }
 
-        // Fetch security events
-        const { data: events } = await supabase
+        // 6. Platform Rating Average
+        const { data: ratingsData } = await supabase
+          .from("class_ratings")
+          .select("stars");
+
+        const rawRatings: any[] = (ratingsData as any[]) || [];
+        if (rawRatings.length > 0) {
+          const sumStars = rawRatings.reduce((acc: number, r: any) => acc + (r.stars || 0), 0);
+          setPlatformRatingAvg(Number((sumStars / rawRatings.length).toFixed(1)));
+        }
+
+        // 7. Open Helpdesk Tickets Count
+        const { count: openTickets } = await supabase
+          .from("help_tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "open");
+
+        setOpenTicketsCount(openTickets || 0);
+
+        // 8. Recent Security Alerts (latest 10)
+        const { data: securityData } = await supabase
           .from("security_events")
-          .select("*")
+          .select("id, user_id, event, created_at")
           .order("created_at", { ascending: false })
-          .limit(5);
+          .limit(10);
 
-        if (events) {
-          setSecurityEvents(events as SecurityEvent[]);
-        }
+        const alerts: SecurityAlertItem[] = ((securityData as any[]) || []).map((sec: any) => ({
+          id: sec.id,
+          user_id: sec.user_id,
+          event: sec.event,
+          created_at: sec.created_at,
+          userName: sec.user_id ? profileNameMap.get(sec.user_id) || "System User" : "Anonymous / System",
+        }));
+        setSecurityAlerts(alerts);
       } catch (err) {
-        console.error("Failed to load admin data", err);
+        console.error("Error loading admin dashboard metrics:", err);
       } finally {
         setLoading(false);
       }
     }
 
-    loadAdminData();
-  }, [router, supabase]);
+    loadAdminDashboard();
+  }, [supabase, router]);
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push("/staff");
-    router.refresh();
-  };
-
-  const studentCount = profiles.filter((p) => p.role === "student").length;
-  const teacherCount = profiles.filter((p) => p.role === "teacher").length;
-  const adminCount = profiles.filter((p) => p.role === "admin").length;
-
-  const { firstName: adminFirstName, initial: adminInitial } = getFirstNameAndInitial(
-    profile?.full_name,
-    "Admin"
+  const { firstName: adminFirstName } = getFirstNameAndInitial(
+    adminProfile?.full_name,
+    "Administrator"
   );
 
   return (
-    <div className="min-h-screen bg-[#04060a] text-slate-100 flex flex-col selection:bg-[#29d9ff]/30 selection:text-white">
-      {/* Top Navigation */}
-      <header className="sticky top-0 z-40 backdrop-blur-md bg-[#04060a]/85 border-b border-white/[0.08]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded bg-[#29d9ff] text-[#04060a] font-mono font-black text-sm flex items-center justify-center">
-                I
-              </div>
-              <span className="text-lg font-bold tracking-tight text-white">Impara</span>
-            </Link>
-            <span className="font-mono text-[10px] uppercase tracking-widest text-purple-400 bg-purple-400/10 border border-purple-400/20 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
-              <ShieldAlert className="w-3 h-3 text-purple-400" />
-              <span>ADMINISTRATOR PORTAL</span>
-            </span>
-          </div>
+    <div className="space-y-8">
+      {/* Welcome Greeting */}
+      <div className="border-b border-white/[0.08] pb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-3">
+          <span>Welcome back, {adminFirstName}!</span>
+        </h1>
+        <p className="text-sm text-slate-400 mt-1">
+          High-level institutional surveillance, real-time platform telemetry, and administrative control.
+        </p>
+      </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-400 font-mono font-bold text-xs flex items-center justify-center shadow-[0_0_12px_rgba(168,85,247,0.2)]">
-                {adminInitial}
+      {/* Six Stat Cards Row */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {/* Total Users */}
+        <div className="p-4 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+            <span>TOTAL USERS</span>
+            <Users className="w-4 h-4 text-[#29d9ff]" />
+          </div>
+          <div className="text-2xl font-bold font-mono text-white">
+            {loading ? "—" : totalUsersCount}
+          </div>
+          <p className="text-[10px] text-slate-400">All registered profiles</p>
+        </div>
+
+        {/* Active Courses */}
+        <div className="p-4 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+            <span>ACTIVE COURSES</span>
+            <BookOpen className="w-4 h-4 text-cyan-400" />
+          </div>
+          <div className="text-2xl font-bold font-mono text-white">
+            {loading ? "—" : activeCoursesCount}
+          </div>
+          <p className="text-[10px] text-slate-400">Ongoing cohorts</p>
+        </div>
+
+        {/* Classes Held (30 days) */}
+        <div className="p-4 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+            <span>CLASSES (30D)</span>
+            <Calendar className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="text-2xl font-bold font-mono text-white">
+            {loading ? "—" : classesHeld30Days}
+          </div>
+          <p className="text-[10px] text-slate-400">Ended lectures held</p>
+        </div>
+
+        {/* Platform Attendance */}
+        <div className="p-4 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+            <span>ATTENDANCE</span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="text-2xl font-bold font-mono text-white">
+            {loading ? "—" : `${platformAttendancePct}%`}
+          </div>
+          <p className="text-[10px] text-slate-400">75% rule compliance</p>
+        </div>
+
+        {/* Platform Rating */}
+        <div className="p-4 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+            <span>RATING</span>
+            <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+          </div>
+          <div className="text-2xl font-bold font-mono text-white">
+            {loading ? "—" : platformRatingAvg > 0 ? platformRatingAvg.toFixed(1) : "—"}
+          </div>
+          <p className="text-[10px] text-slate-400">out of 5.0 stars</p>
+        </div>
+
+        {/* Open Helpdesk Tickets */}
+        <div className="p-4 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-1">
+          <div className="flex items-center justify-between text-slate-400 text-[11px] font-mono">
+            <span>OPEN TICKETS</span>
+            <LifeBuoy className="w-4 h-4 text-rose-400" />
+          </div>
+          <div className="text-2xl font-bold font-mono text-rose-400">
+            {loading ? "—" : openTicketsCount}
+          </div>
+          <p className="text-[10px] text-slate-400">Awaiting response</p>
+        </div>
+      </div>
+
+      {/* Main Two Columns Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* Left Column: Wide (8 cols) - Live Now & Recent Security Alerts */}
+        <div className="lg:col-span-8 space-y-8">
+          {/* Live Now Card */}
+          <div className="rounded-2xl border border-white/[0.08] bg-[#070c18] p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                </div>
+                <h2 className="text-lg font-bold text-white tracking-tight">Live Now</h2>
               </div>
-              <span className="font-mono text-xs text-slate-400 bg-white/[0.04] px-3 py-1 rounded-full border border-white/[0.06]">
-                Admin: {adminFirstName}
+              <span className="text-xs font-mono text-slate-400">
+                {liveSessions.length} active broadcast{liveSessions.length === 1 ? "" : "s"}
               </span>
             </div>
-            <button
-              onClick={handleSignOut}
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-4 py-1.5 text-xs font-mono uppercase tracking-wider text-slate-300 hover:text-rose-400 hover:border-rose-400/40 hover:bg-rose-500/10 transition-all"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Log out</span>
-            </button>
+
+            {loading ? (
+              <div className="space-y-3 py-2">
+                {[1, 2].map((i) => (
+                  <div key={i} className="h-16 bg-white/[0.03] rounded-xl animate-pulse" />
+                ))}
+              </div>
+            ) : liveSessions.length === 0 ? (
+              <div className="p-8 rounded-xl border border-white/[0.04] bg-[#04060a]/50 text-center space-y-2">
+                <Radio className="w-6 h-6 text-slate-500 mx-auto" />
+                <h3 className="text-sm font-semibold text-white">No Live Classes In Progress</h3>
+                <p className="text-xs text-slate-400">
+                  There are currently no active classroom lectures broadcasting across the platform.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {liveSessions.map((sess) => {
+                  const startTime = sess.startedAt
+                    ? new Date(sess.startedAt).toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })
+                    : "Recently";
+
+                  return (
+                    <div
+                      key={sess.id}
+                      className="p-4 rounded-xl border border-white/[0.06] bg-[#04060a]/80 hover:border-white/[0.12] transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase tracking-wider">
+                            ON AIR
+                          </span>
+                          <span className="text-xs font-semibold text-white">{sess.title}</span>
+                        </div>
+                        <div className="text-xs text-slate-400 font-mono">
+                          <span className="text-cyan-400">{sess.courseTitle}</span>
+                          <span className="text-slate-600 mx-1.5">•</span>
+                          <span>Instructor: {sess.teacherName}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <div className="text-xs font-mono text-slate-400 flex items-center gap-1.5 sm:justify-end">
+                          <Clock className="w-3.5 h-3.5 text-rose-400" />
+                          <span>Started at {startTime}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Recent Security Alerts Card */}
+          <div className="rounded-2xl border border-white/[0.08] bg-[#070c18] p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <ShieldAlert className="w-5 h-5 text-amber-400" />
+                <h2 className="text-lg font-bold text-white tracking-tight">Recent Security Alerts</h2>
+              </div>
+              <Link
+                href="/admin/security"
+                className="text-xs font-mono text-[#29d9ff] hover:underline inline-flex items-center gap-1"
+              >
+                <span>View Full Log</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            {loading ? (
+              <div className="space-y-3 py-2">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="h-12 bg-white/[0.03] rounded-xl animate-pulse" />
+                ))}
+              </div>
+            ) : securityAlerts.length === 0 ? (
+              <div className="p-8 rounded-xl border border-white/[0.04] bg-[#04060a]/50 text-center space-y-2">
+                <CheckCircle2 className="w-6 h-6 text-emerald-400 mx-auto" />
+                <h3 className="text-sm font-semibold text-white">No Security Alerts</h3>
+                <p className="text-xs text-slate-400">
+                  Zero suspicious access events or security incidents logged recently.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-white/[0.04] overflow-hidden rounded-xl border border-white/[0.06]">
+                {securityAlerts.map((alert) => {
+                  const dateStr = new Date(alert.created_at).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  });
+                  const timeStr = new Date(alert.created_at).toLocaleTimeString("en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  });
+
+                  return (
+                    <div
+                      key={alert.id}
+                      className="p-3.5 bg-[#04060a]/60 hover:bg-white/[0.02] transition-colors flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="text-slate-200 font-medium">{alert.event}</div>
+                        <div className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
+                          <span className="text-[#29d9ff]">{alert.userName}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                        <div>{dateStr}</div>
+                        <div>{timeStr}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
-        {/* Welcome Header */}
-        <div className="rounded-2xl border border-white/[0.08] bg-[#070c18] p-6 sm:p-8 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
+        {/* Right Column: Narrow (4 cols) - Quick Actions & Upcoming Sessions */}
+        <div className="lg:col-span-4 space-y-8">
+          {/* Quick Actions 2x3 Grid */}
+          <div className="rounded-2xl border border-white/[0.08] bg-[#070c18] p-6 space-y-4">
+            <h2 className="text-base font-bold text-white tracking-tight">Quick Actions</h2>
 
-          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-            <div>
-              <div className="font-mono text-xs text-purple-400 uppercase tracking-widest mb-1">
-                SYSTEM CONTROL PLANE
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white">
-                Welcome back, {adminFirstName}!
-              </h1>
-              <p className="mt-1 text-sm text-slate-400">
-                Platform Overview & Security Audit. Postgres Row Level Security and server boundary role enforcement are active.
-              </p>
+            <div className="grid grid-cols-2 gap-2.5">
+              <Link
+                href="/admin/users?action=new"
+                className="p-3 rounded-xl border border-white/[0.06] bg-[#04060a]/60 hover:bg-white/[0.04] hover:border-[#29d9ff]/30 transition-all flex flex-col justify-between h-24 group"
+              >
+                <UserPlus className="w-4 h-4 text-[#29d9ff] group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-semibold text-slate-200 group-hover:text-white leading-tight">
+                  Create Teacher Account
+                </span>
+              </Link>
+
+              <Link
+                href="/admin/users"
+                className="p-3 rounded-xl border border-white/[0.06] bg-[#04060a]/60 hover:bg-white/[0.04] hover:border-[#29d9ff]/30 transition-all flex flex-col justify-between h-24 group"
+              >
+                <Users className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-semibold text-slate-200 group-hover:text-white leading-tight">
+                  Manage Users
+                </span>
+              </Link>
+
+              <Link
+                href="/admin/courses"
+                className="p-3 rounded-xl border border-white/[0.06] bg-[#04060a]/60 hover:bg-white/[0.04] hover:border-[#29d9ff]/30 transition-all flex flex-col justify-between h-24 group"
+              >
+                <BookOpen className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-semibold text-slate-200 group-hover:text-white leading-tight">
+                  Courses & Enrolments
+                </span>
+              </Link>
+
+              <Link
+                href="/admin/reports"
+                className="p-3 rounded-xl border border-white/[0.06] bg-[#04060a]/60 hover:bg-white/[0.04] hover:border-[#29d9ff]/30 transition-all flex flex-col justify-between h-24 group"
+              >
+                <BarChart3 className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-semibold text-slate-200 group-hover:text-white leading-tight">
+                  Reports
+                </span>
+              </Link>
+
+              <Link
+                href="/admin/security"
+                className="p-3 rounded-xl border border-white/[0.06] bg-[#04060a]/60 hover:bg-white/[0.04] hover:border-[#29d9ff]/30 transition-all flex flex-col justify-between h-24 group"
+              >
+                <Shield className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-semibold text-slate-200 group-hover:text-white leading-tight">
+                  Security Log
+                </span>
+              </Link>
+
+              <Link
+                href="/admin/helpdesk"
+                className="p-3 rounded-xl border border-white/[0.06] bg-[#04060a]/60 hover:bg-white/[0.04] hover:border-[#29d9ff]/30 transition-all flex flex-col justify-between h-24 group"
+              >
+                <MessageSquare className="w-4 h-4 text-rose-400 group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-semibold text-slate-200 group-hover:text-white leading-tight">
+                  Helpdesk Inbox
+                </span>
+              </Link>
+            </div>
+          </div>
+
+          {/* Upcoming Sessions Across Platform */}
+          <div className="rounded-2xl border border-white/[0.08] bg-[#070c18] p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-white tracking-tight">Upcoming Sessions</h2>
+              <span className="text-xs font-mono text-slate-400">Platform Wide</span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              <div className="rounded-xl border border-white/[0.08] bg-[#04060a] p-3 text-center min-w-[85px]">
-                <div className="font-mono text-[10px] text-slate-500">STUDENTS</div>
-                <div className="text-lg font-bold text-emerald-400 mt-0.5">{studentCount}</div>
-                <div className="text-[9px] text-slate-500 font-mono">Self-Serve</div>
+            {loading ? (
+              <div className="space-y-3 py-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-14 bg-white/[0.03] rounded-xl animate-pulse" />
+                ))}
               </div>
-              <div className="rounded-xl border border-white/[0.08] bg-[#04060a] p-3 text-center min-w-[85px]">
-                <div className="font-mono text-[10px] text-slate-500">TEACHERS</div>
-                <div className="text-lg font-bold text-sky-400 mt-0.5">{teacherCount}</div>
-                <div className="text-[9px] text-slate-500 font-mono">Admin Only</div>
+            ) : upcomingSessions.length === 0 ? (
+              <div className="text-center py-6 text-slate-400 text-xs">
+                No future sessions scheduled.
               </div>
-              <div className="rounded-xl border border-white/[0.08] bg-[#04060a] p-3 text-center min-w-[85px]">
-                <div className="font-mono text-[10px] text-slate-500">ADMINS</div>
-                <div className="text-lg font-bold text-purple-400 mt-0.5">{adminCount}</div>
-                <div className="text-[9px] text-slate-500 font-mono">Root</div>
+            ) : (
+              <div className="space-y-2.5">
+                {upcomingSessions.map((sess) => {
+                  const dateObj = new Date(sess.scheduledAt);
+                  const dateStr = dateObj.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  });
+                  const timeStr = dateObj.toLocaleTimeString("en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  });
+
+                  return (
+                    <div
+                      key={sess.id}
+                      className="p-3 rounded-xl border border-white/[0.06] bg-[#04060a]/60 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="space-y-0.5 truncate">
+                        <div className="font-semibold text-white truncate">{sess.title}</div>
+                        <div className="text-[11px] font-mono text-slate-400 truncate">
+                          <span className="text-cyan-400">{sess.courseTitle}</span>
+                          <span className="text-slate-600 mx-1">•</span>
+                          <span>{sess.teacherName}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0 font-mono text-[11px]">
+                        <div className="text-slate-300 font-medium">{dateStr}</div>
+                        <div className="text-slate-500">{timeStr}</div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+            )}
           </div>
         </div>
-
-        {/* User Management List */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-purple-400" />
-              <h2 className="text-lg font-bold text-white">Registered Users & Assigned Roles</h2>
-            </div>
-            <span className="font-mono text-xs text-slate-500">Unrestricted Admin Scope</span>
-          </div>
-
-          <div className="rounded-2xl border border-white/[0.08] bg-[#070c18] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#0a1120] border-b border-white/[0.08] font-mono uppercase text-slate-400 text-[10px] tracking-wider">
-                  <tr>
-                    <th className="px-6 py-3.5">Name</th>
-                    <th className="px-6 py-3.5">Role</th>
-                    <th className="px-6 py-3.5">Student ID</th>
-                    <th className="px-6 py-3.5">Registered</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.04]">
-                  {profiles.map((p) => (
-                    <tr key={p.id} className="hover:bg-white/[0.02] transition-colors">
-                      <td className="px-6 py-4 font-medium text-white">{p.full_name || "Unnamed"}</td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-block font-mono text-[10px] uppercase px-2 py-0.5 rounded-full border ${
-                            p.role === "admin"
-                              ? "bg-purple-500/10 border-purple-500/30 text-purple-300"
-                              : p.role === "teacher"
-                              ? "bg-sky-500/10 border-sky-500/30 text-sky-300"
-                              : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-                          }`}
-                        >
-                          {p.role}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 font-mono text-slate-400">
-                        {p.student_id || "—"}
-                      </td>
-                      <td className="px-6 py-4 font-mono text-slate-500">
-                        {new Date(p.created_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        {/* Security & Access Policies Info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="rounded-2xl border border-white/[0.08] bg-[#070c18] p-6 space-y-3">
-            <div className="flex items-center gap-2 font-mono text-xs text-[#29d9ff]">
-              <Database className="w-4 h-4" />
-              <span>RLS ENFORCEMENT AUDIT</span>
-            </div>
-            <h3 className="text-base font-semibold text-white">Row Level Security Active</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              All 14 application tables and views have RLS enabled. Students can only select courses they are
-              enrolled in; teachers can only manage their assigned courses; only admins have universal mutation rights.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-white/[0.08] bg-[#070c18] p-6 space-y-3">
-            <div className="flex items-center gap-2 font-mono text-xs text-amber-400">
-              <ShieldCheck className="w-4 h-4" />
-              <span>ROLE CREATION RESTRICTION</span>
-            </div>
-            <h3 className="text-base font-semibold text-white">Server-Enforced User Roles</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Public self-registration at <code className="text-white">/signup</code> is hard-coded in database triggers
-              to always assign the <code className="text-white">student</code> role. Teacher and Admin accounts can only
-              be provisioned by an administrator.
-            </p>
-          </div>
-        </div>
-      </main>
+      </div>
     </div>
   );
 }

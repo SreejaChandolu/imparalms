@@ -70,24 +70,37 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // 2. Fetch authenticated user's role from profiles
+  // 2. Fetch authenticated user's role and active status from profiles
   let userRole: UserRole = "student";
+  let isUserActive = true;
   try {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("*")
+      .select("role, is_active")
       .eq("id", user.id)
       .single();
 
-    const userProfile = profile as unknown as { role?: UserRole } | null;
+    const userProfile = profile as unknown as { role?: UserRole; is_active?: boolean } | null;
     if (userProfile?.role) {
       userRole = userProfile.role;
+    }
+    if (userProfile?.is_active === false) {
+      isUserActive = false;
     }
   } catch {
     userRole = "student";
   }
 
-  // 3. If accessing /student, /teacher, /admin, redirect wrong roles to their own dashboard
+  // 3. Reject deactivated accounts immediately
+  if (!isUserActive) {
+    await supabase.auth.signOut();
+    const url = request.nextUrl.clone();
+    url.pathname = userRole === "student" ? "/login" : "/staff";
+    url.searchParams.set("error", "deactivated");
+    return NextResponse.redirect(url);
+  }
+
+  // 4. If accessing /student, /teacher, /admin, redirect wrong roles to their own dashboard
   if (pathname.startsWith("/student") && userRole !== "student") {
     const url = request.nextUrl.clone();
     url.pathname = userRole === "admin" ? "/admin" : "/teacher";

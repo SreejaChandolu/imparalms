@@ -54,10 +54,16 @@ export default function StudentLoginPage() {
         );
       }
 
-      const userProfile = profile as unknown as { role?: string } | null;
+      const userProfile = profile as unknown as { role?: string; is_active?: boolean } | null;
 
       if (!userProfile) {
         throw new Error("User profile not found in database. Please contact administration.");
+      }
+
+      if (userProfile.is_active === false) {
+        await supabase.auth.signOut();
+        setError("Your account has been deactivated. Please contact administration.");
+        return;
       }
 
       if (userProfile.role !== "student") {

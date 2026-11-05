@@ -54,10 +54,16 @@ export default function StaffLoginPage() {
         );
       }
 
-      const userProfile = profile as unknown as { role?: string; full_name?: string } | null;
+      const userProfile = profile as unknown as { role?: string; full_name?: string; is_active?: boolean } | null;
 
       if (!userProfile) {
         throw new Error("Staff profile not found in database. Please contact an administrator.");
+      }
+
+      if (userProfile.is_active === false) {
+        await supabase.auth.signOut();
+        setError("Your staff account has been deactivated. Please contact an administrator.");
+        return;
       }
 
       // Enforce: Students CANNOT sign in through /staff!
