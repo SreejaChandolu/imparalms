@@ -20,7 +20,7 @@ interface CourseAttendanceSummary {
   courseId: string;
   courseTitle: string;
   teacherName: string;
-  attendancePercentage: number;
+  attendancePercentage: number | null;
   totalEndedSessions: number;
   sessionsAttended: number;
   isBelowThreshold: boolean;
@@ -43,7 +43,7 @@ export default function AttendanceReportPage() {
   const [loading, setLoading] = useState(true);
   const [studentName, setStudentName] = useState("Student");
   const [studentCode, setStudentCode] = useState<string | null>(null);
-  const [overallPercentage, setOverallPercentage] = useState<number>(100);
+  const [overallPercentage, setOverallPercentage] = useState<number | null>(null);
   const [coursesAttendance, setCoursesAttendance] = useState<CourseAttendanceSummary[]>([]);
   const [hasEnrollments, setHasEnrollments] = useState(true);
 
@@ -167,7 +167,7 @@ export default function AttendanceReportPage() {
         const overall =
           totalEndedCount > 0
             ? Math.round((totalAttendedCount / totalEndedCount) * 100)
-            : 100;
+            : null;
 
         setOverallPercentage(overall);
 
@@ -262,8 +262,10 @@ export default function AttendanceReportPage() {
             };
           });
 
-          const pctValue =
-            viewInfo?.attendance_percentage !== undefined
+          const totalEnded = Number(viewInfo?.total_ended_sessions) || courseSessions.length;
+          const hasEndedClasses = totalEnded > 0;
+          const pctValue = hasEndedClasses
+            ? viewInfo?.attendance_percentage !== undefined
               ? Number(viewInfo.attendance_percentage)
               : courseSessions.length > 0
               ? Math.round(
@@ -271,18 +273,19 @@ export default function AttendanceReportPage() {
                     courseSessions.length) *
                     100
                 )
-              : 100;
+              : null
+            : null;
 
           return {
             courseId: c.id,
             courseTitle: c.title,
             teacherName: teacherMap.get(c.teacher_id) || "Assigned Instructor",
             attendancePercentage: pctValue,
-            totalEndedSessions: Number(viewInfo?.total_ended_sessions) || courseSessions.length,
+            totalEndedSessions: totalEnded,
             sessionsAttended:
               Number(viewInfo?.sessions_attended) ||
               courseSessions.filter((s) => s.status === "Present").length,
-            isBelowThreshold: pctValue < 75,
+            isBelowThreshold: pctValue !== null ? pctValue < 75 : false,
             sessions: courseSessions,
           };
         });
@@ -363,7 +366,7 @@ export default function AttendanceReportPage() {
     URL.revokeObjectURL(url);
   };
 
-  const isOverallBelowThreshold = overallPercentage < 75;
+  const isOverallBelowThreshold = overallPercentage !== null && overallPercentage < 75;
 
   return (
     <div className="space-y-8 sm:space-y-10">
@@ -456,19 +459,25 @@ export default function AttendanceReportPage() {
               <div className="flex items-center gap-4">
                 <div
                   className={`rounded-2xl border p-4 sm:p-5 text-center min-w-[130px] ${
-                    isOverallBelowThreshold
-                      ? "border-amber-400/40 bg-amber-400/10 text-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.2)]"
-                      : "border-emerald-400/30 bg-emerald-400/10 text-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.15)]"
+                    overallPercentage !== null
+                      ? isOverallBelowThreshold
+                        ? "border-amber-400/40 bg-amber-400/10 text-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.2)]"
+                        : "border-emerald-400/30 bg-emerald-400/10 text-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.15)]"
+                      : "border-white/[0.08] bg-white/[0.02] text-slate-400"
                   }`}
                 >
                   <div className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
                     AGGREGATE SCORE
                   </div>
                   <div className="text-3xl sm:text-4xl font-extrabold tracking-tight mt-1">
-                    {overallPercentage}%
+                    {overallPercentage !== null ? `${overallPercentage}%` : "—"}
                   </div>
                   <div className="text-[10px] font-mono mt-0.5">
-                    {isOverallBelowThreshold ? "Below 75% Target" : "Verified In Good Standing"}
+                    {overallPercentage !== null
+                      ? isOverallBelowThreshold
+                        ? "Below 75% Target"
+                        : "Verified In Good Standing"
+                      : "No classes yet"}
                   </div>
                 </div>
               </div>
@@ -523,18 +532,26 @@ export default function AttendanceReportPage() {
                       </div>
                       <div
                         className={`text-2xl font-bold font-mono ${
-                          course.isBelowThreshold ? "text-amber-400" : "text-emerald-400"
+                          course.attendancePercentage !== null
+                            ? course.isBelowThreshold
+                              ? "text-amber-400"
+                              : "text-emerald-400"
+                            : "text-slate-400"
                         }`}
                       >
-                        {course.attendancePercentage}%
+                        {course.attendancePercentage !== null
+                          ? `${course.attendancePercentage}%`
+                          : "—"}
                       </div>
                     </div>
 
                     <div
                       className={`px-3 py-1.5 rounded-xl border text-xs font-mono uppercase tracking-wider font-semibold ${
-                        course.isBelowThreshold
-                          ? "bg-amber-400/10 border-amber-400/30 text-amber-400"
-                          : "bg-emerald-400/10 border-emerald-400/30 text-emerald-400"
+                        course.attendancePercentage !== null
+                          ? course.isBelowThreshold
+                            ? "bg-amber-400/10 border-amber-400/30 text-amber-400"
+                            : "bg-emerald-400/10 border-emerald-400/30 text-emerald-400"
+                          : "bg-white/[0.04] border-white/[0.08] text-slate-400"
                       }`}
                     >
                       {course.sessionsAttended} / {course.totalEndedSessions} Attended

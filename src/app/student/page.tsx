@@ -48,7 +48,7 @@ export default function StudentDashboardPage() {
   const [firstName, setFirstName] = useState<string>("Student");
   const [stats, setStats] = useState({
     enrolledCoursesCount: 0,
-    overallAttendancePercentage: 0,
+    overallAttendancePercentage: null as number | null,
     totalAssessmentsTaken: 0,
   });
   const [courses, setCourses] = useState<CourseCardData[]>([]);
@@ -90,7 +90,7 @@ export default function StudentDashboardPage() {
         const enrolledCount = courseIds.length;
 
         // 4. Fetch overall attendance from view: course_attendance_percentage
-        let overallAttendance = 0;
+        let overallAttendance: number | null = null;
         if (enrolledCount > 0) {
           const { data: attendanceData } = (await supabase
             .from("course_attendance_percentage")
@@ -118,12 +118,7 @@ export default function StudentDashboardPage() {
 
             if (totalEnded > 0) {
               overallAttendance = Math.round((totalAttended / totalEnded) * 100);
-            } else {
-              // No sessions ended yet - count as 100% baseline
-              overallAttendance = 100;
             }
-          } else {
-            overallAttendance = 100;
           }
         }
 
@@ -372,18 +367,39 @@ export default function StudentDashboardPage() {
             <span className="font-mono text-xs uppercase tracking-wider text-slate-400">
               Overall Attendance
             </span>
-            <div className="w-8 h-8 rounded-full bg-emerald-400/10 text-emerald-400 flex items-center justify-center">
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                stats.overallAttendancePercentage !== null
+                  ? stats.overallAttendancePercentage >= 75
+                    ? "bg-emerald-400/10 text-emerald-400"
+                    : "bg-amber-400/10 text-amber-400"
+                  : "bg-white/[0.05] text-slate-500"
+              }`}
+            >
               <CheckCircle className="w-4 h-4" />
             </div>
           </div>
           {loading ? (
             <div className="h-8 w-20 bg-white/[0.06] rounded animate-pulse" />
-          ) : (
+          ) : stats.overallAttendancePercentage !== null ? (
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold text-white tracking-tight">
                 {stats.overallAttendancePercentage}%
               </span>
-              <span className="font-mono text-xs text-emerald-400/80">≥75% threshold</span>
+              <span
+                className={`font-mono text-xs ${
+                  stats.overallAttendancePercentage >= 75
+                    ? "text-emerald-400/80"
+                    : "text-amber-400/80"
+                }`}
+              >
+                {stats.overallAttendancePercentage >= 75 ? "≥75% threshold" : "Below 75% target"}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-white tracking-tight">—</span>
+              <span className="font-mono text-xs text-slate-500">No classes yet</span>
             </div>
           )}
         </div>

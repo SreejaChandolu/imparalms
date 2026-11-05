@@ -44,7 +44,7 @@ interface ClassRatingRecord {
 interface CourseRatingSummary {
   course_id: string;
   course_title: string;
-  average_stars: number;
+  average_stars: number | null;
   rating_count: number;
 }
 
@@ -204,9 +204,9 @@ export default function TeacherRatingsPage() {
   const aggregateMetrics = useMemo(() => {
     if (filteredRatings.length === 0) {
       return {
-        overallAverage: 0,
+        overallAverage: null as number | null,
         totalRatings: 0,
-        positivePct: 0,
+        positivePct: null as number | null,
         commentsCount: 0,
       };
     }
@@ -218,9 +218,9 @@ export default function TeacherRatingsPage() {
     const commentsCount = filteredRatings.filter((r) => r.comment && r.comment.trim().length > 0).length;
 
     return {
-      overallAverage: avg,
+      overallAverage: avg as number | null,
       totalRatings: filteredRatings.length,
-      positivePct,
+      positivePct: positivePct as number | null,
       commentsCount,
     };
   }, [filteredRatings]);
@@ -240,7 +240,7 @@ export default function TeacherRatingsPage() {
 
     return courses.map((c) => {
       const stat = map.get(c.id);
-      const avg = stat && stat.count > 0 ? Number((stat.sum / stat.count).toFixed(1)) : 0;
+      const avg = stat && stat.count > 0 ? Number((stat.sum / stat.count).toFixed(1)) : null;
       return {
         course_id: c.id,
         course_title: c.title,
@@ -345,29 +345,39 @@ export default function TeacherRatingsPage() {
         <div className="p-5 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-2">
           <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
             <span>OVERALL AVERAGE</span>
-            <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+            <Star
+              className={`w-4 h-4 ${
+                aggregateMetrics.overallAverage !== null ? "text-amber-400 fill-amber-400" : "text-slate-500"
+              }`}
+            />
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold font-mono text-white">
-              {loading ? "—" : aggregateMetrics.overallAverage > 0 ? aggregateMetrics.overallAverage.toFixed(1) : "—"}
+              {loading ? "—" : aggregateMetrics.overallAverage !== null ? aggregateMetrics.overallAverage.toFixed(1) : "—"}
             </span>
-            <span className="text-xs text-slate-400 font-mono">/ 5.0</span>
+            {aggregateMetrics.overallAverage !== null && (
+              <span className="text-xs text-slate-400 font-mono">/ 5.0</span>
+            )}
           </div>
-          <div className="flex items-center gap-1">
-            {[1, 2, 3, 4, 5].map((star) => (
-              <Star
-                key={star}
-                className={`w-3.5 h-3.5 ${
-                  star <= Math.round(aggregateMetrics.overallAverage)
-                    ? "fill-amber-400 text-amber-400"
-                    : "text-slate-600"
-                }`}
-              />
-            ))}
-            <span className="text-xs text-slate-400 ml-1.5 font-mono">
-              ({aggregateMetrics.totalRatings} ratings)
-            </span>
-          </div>
+          {aggregateMetrics.overallAverage !== null ? (
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Star
+                  key={star}
+                  className={`w-3.5 h-3.5 ${
+                    star <= Math.round(aggregateMetrics.overallAverage!)
+                      ? "fill-amber-400 text-amber-400"
+                      : "text-slate-600"
+                  }`}
+                />
+              ))}
+              <span className="text-xs text-slate-400 ml-1.5 font-mono">
+                ({aggregateMetrics.totalRatings} ratings)
+              </span>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 font-mono">No ratings yet</p>
+          )}
         </div>
 
         <div className="p-5 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-2">
@@ -386,12 +396,22 @@ export default function TeacherRatingsPage() {
         <div className="p-5 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-2">
           <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
             <span>HIGH RATING (4-5★)</span>
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
+            <TrendingUp
+              className={`w-4 h-4 ${
+                aggregateMetrics.positivePct !== null ? "text-emerald-400" : "text-slate-500"
+              }`}
+            />
           </div>
-          <div className="text-3xl font-bold font-mono text-emerald-400">
-            {loading ? "—" : `${aggregateMetrics.positivePct}%`}
+          <div
+            className={`text-3xl font-bold font-mono ${
+              aggregateMetrics.positivePct !== null ? "text-emerald-400" : "text-white"
+            }`}
+          >
+            {loading ? "—" : aggregateMetrics.positivePct !== null ? `${aggregateMetrics.positivePct}%` : "—"}
           </div>
-          <p className="text-xs text-slate-400">Percentage of attendees rating 4 or 5 stars</p>
+          <p className="text-xs text-slate-400 font-mono">
+            {aggregateMetrics.positivePct !== null ? "Percentage of attendees rating 4 or 5 stars" : "No ratings yet"}
+          </p>
         </div>
 
         <div className="p-5 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-2">
@@ -525,13 +545,22 @@ export default function TeacherRatingsPage() {
                   </div>
 
                   <div className="text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                      <span className="text-base font-bold font-mono text-white">
-                        {c.average_stars > 0 ? c.average_stars.toFixed(1) : "—"}
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-500">out of 5.0</span>
+                    {c.average_stars !== null ? (
+                      <>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                          <span className="text-base font-bold font-mono text-white">
+                            {c.average_stars.toFixed(1)}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-500">out of 5.0</span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-base font-bold font-mono text-slate-500">—</div>
+                        <span className="text-[10px] font-mono text-slate-500">No ratings yet</span>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}

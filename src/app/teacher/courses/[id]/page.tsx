@@ -53,7 +53,7 @@ interface ClassSessionItem {
   started_at: string | null;
   ended_at: string | null;
   attendancePresentCount: number;
-  attendancePercentage: number;
+  attendancePercentage: number | null;
   averageRating: number | null;
   recordingStatus: "processing" | "ready" | "hidden" | "none";
 }
@@ -247,7 +247,7 @@ export default function TeacherCourseDetailPage() {
         // Build enriched sessions
         const enrichedSessions: ClassSessionItem[] = rawSessions.map((s) => {
           const present = presentCountMap.get(s.id) || 0;
-          const pct = studentCount > 0 ? Math.round((present / studentCount) * 100) : 0;
+          const pct = studentCount > 0 ? Math.round((present / studentCount) * 100) : null;
           const rInfo = ratingsMap.get(s.id);
           const avgRating = rInfo && rInfo.count > 0 ? Number((rInfo.sum / rInfo.count).toFixed(1)) : null;
 
@@ -664,9 +664,13 @@ export default function TeacherCourseDetailPage() {
                                   <div className="text-slate-400">
                                     <span className="text-slate-500">Attendance:</span>{" "}
                                     {isEnded ? (
-                                      <span className="text-white font-semibold">
-                                        {session.attendancePresentCount} of {enrolledCount} present ({session.attendancePercentage}%)
-                                      </span>
+                                      session.attendancePercentage !== null ? (
+                                        <span className="text-white font-semibold">
+                                          {session.attendancePresentCount} of {enrolledCount} present ({session.attendancePercentage}%)
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-500 font-semibold">— No enrolments</span>
+                                      )
                                     ) : (
                                       <span className="text-slate-500">Telemetry after session</span>
                                     )}
@@ -679,7 +683,7 @@ export default function TeacherCourseDetailPage() {
                                         {session.averageRating} ★
                                       </span>
                                     ) : (
-                                      <span className="text-slate-500">No ratings yet</span>
+                                      <span className="text-slate-500 font-mono">— No ratings yet</span>
                                     )}
                                   </div>
                                 </div>

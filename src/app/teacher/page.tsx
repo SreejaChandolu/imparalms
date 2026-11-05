@@ -27,7 +27,7 @@ interface TeacherCourseCard {
   title: string;
   description: string | null;
   enrolledStudentsCount: number;
-  averageAttendancePct: number;
+  averageAttendancePct: number | null;
   averageRating: number | null;
   ratingsCount: number;
 }
@@ -52,7 +52,7 @@ export default function TeacherDashboardPage() {
   const [firstName, setFirstName] = useState("Instructor");
   const [stats, setStats] = useState({
     coursesCount: 0,
-    overallAttendancePercentage: 100,
+    overallAttendancePercentage: null as number | null,
     averageRating: null as number | null,
     totalRatingsCount: 0,
     recordingsCount: 0,
@@ -103,7 +103,7 @@ export default function TeacherDashboardPage() {
           setUpcomingSessions([]);
           setStats({
             coursesCount: 0,
-            overallAttendancePercentage: 100,
+            overallAttendancePercentage: null,
             averageRating: null,
             totalRatingsCount: 0,
             recordingsCount: 0,
@@ -192,7 +192,7 @@ export default function TeacherDashboardPage() {
         }
 
         // Calculate attendance per course
-        const courseAttendanceMap = new Map<string, number>();
+        const courseAttendanceMap = new Map<string, number | null>();
         let overallAttendedTotal = 0;
         let overallPossibleTotal = 0;
 
@@ -201,14 +201,14 @@ export default function TeacherDashboardPage() {
           const enrolledCount = courseEnrollmentMap.get(course.id) || 0;
 
           if (courseEnded.length === 0 || enrolledCount === 0) {
-            courseAttendanceMap.set(course.id, 100);
+            courseAttendanceMap.set(course.id, null);
           } else {
             let coursePresentSum = 0;
             courseEnded.forEach((s) => {
               coursePresentSum += sessionAttendanceCounts.get(s.id) || 0;
             });
             const totalPossible = courseEnded.length * enrolledCount;
-            const pct = totalPossible > 0 ? Math.round((coursePresentSum / totalPossible) * 100) : 100;
+            const pct = totalPossible > 0 ? Math.round((coursePresentSum / totalPossible) * 100) : null;
             courseAttendanceMap.set(course.id, pct);
 
             overallAttendedTotal += coursePresentSum;
@@ -219,7 +219,7 @@ export default function TeacherDashboardPage() {
         const overallAttendance =
           overallPossibleTotal > 0
             ? Math.round((overallAttendedTotal / overallPossibleTotal) * 100)
-            : 100;
+            : null;
 
         // 7. Fetch ratings for teacher's sessions
         const allSessionIds = allSessions.map((s) => s.id);
@@ -278,7 +278,7 @@ export default function TeacherDashboardPage() {
             title: c.title,
             description: c.description,
             enrolledStudentsCount: courseEnrollmentMap.get(c.id) || 0,
-            averageAttendancePct: courseAttendanceMap.get(c.id) ?? 100,
+            averageAttendancePct: courseAttendanceMap.get(c.id) ?? null,
             averageRating: avgRating,
             ratingsCount: ratingInfo?.count || 0,
           };
@@ -385,18 +385,39 @@ export default function TeacherDashboardPage() {
             <span className="font-mono text-xs uppercase tracking-wider text-slate-400">
               Overall Attendance
             </span>
-            <div className="w-8 h-8 rounded-full bg-emerald-400/10 text-emerald-400 flex items-center justify-center">
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                stats.overallAttendancePercentage !== null
+                  ? stats.overallAttendancePercentage >= 75
+                    ? "bg-emerald-400/10 text-emerald-400"
+                    : "bg-amber-400/10 text-amber-400"
+                  : "bg-white/[0.05] text-slate-500"
+              }`}
+            >
               <CheckCircle className="w-4 h-4" />
             </div>
           </div>
           {loading ? (
             <div className="h-8 w-20 bg-white/[0.06] rounded animate-pulse" />
-          ) : (
+          ) : stats.overallAttendancePercentage !== null ? (
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold text-white tracking-tight">
                 {stats.overallAttendancePercentage}%
               </span>
-              <span className="font-mono text-xs text-emerald-400/80">≥75% verified</span>
+              <span
+                className={`font-mono text-xs ${
+                  stats.overallAttendancePercentage >= 75
+                    ? "text-emerald-400/80"
+                    : "text-amber-400/80"
+                }`}
+              >
+                {stats.overallAttendancePercentage >= 75 ? "≥75% verified" : "Below 75% target"}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-white tracking-tight">—</span>
+              <span className="font-mono text-xs text-slate-500">No classes yet</span>
             </div>
           )}
         </div>
@@ -407,20 +428,31 @@ export default function TeacherDashboardPage() {
             <span className="font-mono text-xs uppercase tracking-wider text-slate-400">
               Average Class Rating
             </span>
-            <div className="w-8 h-8 rounded-full bg-amber-400/10 text-amber-400 flex items-center justify-center">
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                stats.averageRating !== null
+                  ? "bg-amber-400/10 text-amber-400"
+                  : "bg-white/[0.05] text-slate-500"
+              }`}
+            >
               <Star className="w-4 h-4 fill-current" />
             </div>
           </div>
           {loading ? (
             <div className="h-8 w-24 bg-white/[0.06] rounded animate-pulse" />
-          ) : (
+          ) : stats.averageRating !== null ? (
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold text-white tracking-tight">
-                {stats.averageRating !== null ? `${stats.averageRating} ★` : "N/A"}
+                {stats.averageRating} ★
               </span>
               <span className="font-mono text-xs text-slate-500">
                 {stats.totalRatingsCount} {stats.totalRatingsCount === 1 ? "rating" : "ratings"}
               </span>
+            </div>
+          ) : (
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-white tracking-tight">—</span>
+              <span className="font-mono text-xs text-slate-500">No ratings yet</span>
             </div>
           )}
         </div>
@@ -509,14 +541,34 @@ export default function TeacherDashboardPage() {
                     </div>
                     <div>
                       <div className="text-[10px] uppercase text-slate-500">Attendance</div>
-                      <div className="text-sm sm:text-base font-bold text-emerald-400 mt-0.5">
-                        {course.averageAttendancePct}%
+                      <div className="text-sm sm:text-base font-bold mt-0.5">
+                        {course.averageAttendancePct !== null ? (
+                          <span
+                            className={
+                              course.averageAttendancePct >= 75
+                                ? "text-emerald-400"
+                                : "text-amber-400"
+                            }
+                          >
+                            {course.averageAttendancePct}%
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-normal">
+                            — <span className="text-[10px] text-slate-500 font-mono">No classes yet</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div>
                       <div className="text-[10px] uppercase text-slate-500">Avg Rating</div>
-                      <div className="text-sm sm:text-base font-bold text-amber-400 mt-0.5">
-                        {course.averageRating !== null ? `${course.averageRating} ★` : "—"}
+                      <div className="text-sm sm:text-base font-bold mt-0.5">
+                        {course.averageRating !== null ? (
+                          <span className="text-amber-400">{course.averageRating} ★</span>
+                        ) : (
+                          <span className="text-slate-400 font-normal">
+                            — <span className="text-[10px] text-slate-500 font-mono">No ratings yet</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

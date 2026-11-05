@@ -57,7 +57,7 @@ interface StudentSummaryItem {
   course_title: string;
   total_ended_sessions: number;
   sessions_attended: number;
-  attendance_percentage: number;
+  attendance_percentage: number | null;
 }
 
 function AttendanceContent() {
@@ -369,7 +369,7 @@ function AttendanceContent() {
             });
 
             const percentage =
-              totalCourseSessions > 0 ? Math.round((attendedCount / totalCourseSessions) * 100) : 100;
+              totalCourseSessions > 0 ? Math.round((attendedCount / totalCourseSessions) * 100) : null;
 
             studentSummaryList.push({
               student_id: student.student_id,
@@ -480,7 +480,7 @@ function AttendanceContent() {
       totalPresent += present;
     });
 
-    const pct = totalPossible > 0 ? Math.round((totalPresent / totalPossible) * 100) : 100;
+    const pct = totalPossible > 0 ? Math.round((totalPresent / totalPossible) * 100) : null;
     return {
       totalPossible,
       totalPresent,
@@ -507,7 +507,7 @@ function AttendanceContent() {
       const rows = filteredSessions.map((s) => {
         const enrolled = courseEnrollmentCounts.get(s.course_id) || 0;
         const present = sessionPresentCounts.get(s.id) || 0;
-        const pct = enrolled > 0 ? Math.round((present / enrolled) * 100) : 0;
+        const pct = enrolled > 0 ? Math.round((present / enrolled) * 100) : null;
         const dateStr = s.started_at
           ? new Date(s.started_at).toLocaleDateString()
           : new Date(s.scheduled_at).toLocaleDateString();
@@ -520,8 +520,8 @@ function AttendanceContent() {
           s.duration_minutes,
           present,
           enrolled,
-          `${pct}%`,
-          pct >= 75 ? "Compliant (>=75%)" : "Below 75%",
+          pct !== null ? `${pct}%` : "—",
+          pct !== null ? (pct >= 75 ? "Compliant (>=75%)" : "Below 75%") : "No enrolments",
         ].join(",");
       });
 
@@ -552,8 +552,10 @@ function AttendanceContent() {
           `"${st.course_title.replace(/"/g, '""')}"`,
           st.total_ended_sessions,
           st.sessions_attended,
-          `${st.attendance_percentage}%`,
-          st.attendance_percentage >= 75 ? "Good Standing" : "Below 75% Target (Needs Attention)",
+          st.attendance_percentage !== null ? `${st.attendance_percentage}%` : "—",
+          st.attendance_percentage !== null
+            ? (st.attendance_percentage >= 75 ? "Good Standing" : "Below 75% Target (Needs Attention)")
+            : "No classes yet",
         ].join(",");
       });
 
@@ -653,8 +655,8 @@ function AttendanceContent() {
             <Users className="w-4 h-4 text-[#29d9ff]" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold font-mono text-white flex items-baseline gap-2">
-            <span>{loading ? "—" : `${overallMetrics.percentage}%`}</span>
-            {!loading && (
+            <span>{loading ? "—" : overallMetrics.percentage !== null ? `${overallMetrics.percentage}%` : "—"}</span>
+            {!loading && overallMetrics.percentage !== null && (
               <span
                 className={`text-xs px-2 py-0.5 rounded-full border font-mono ${
                   overallMetrics.percentage >= 75
@@ -667,7 +669,11 @@ function AttendanceContent() {
             )}
           </div>
           <p className="text-xs text-slate-400">
-            {loading ? "Loading..." : `${overallMetrics.totalPresent} attended of ${overallMetrics.totalPossible} seats`}
+            {loading
+              ? "Loading..."
+              : overallMetrics.percentage !== null
+              ? `${overallMetrics.totalPresent} attended of ${overallMetrics.totalPossible} seats`
+              : "No classes yet"}
           </p>
         </div>
 
@@ -688,7 +694,7 @@ function AttendanceContent() {
             <AlertTriangle className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold font-mono text-amber-400">
-            {loading ? "—" : filteredStudentSummaries.filter((s) => s.attendance_percentage < 75).length}
+            {loading ? "—" : filteredStudentSummaries.filter((s) => s.attendance_percentage !== null && s.attendance_percentage < 75).length}
           </div>
           <p className="text-xs text-slate-400">Enrolled students below the mandatory 75% threshold</p>
         </div>
@@ -849,8 +855,8 @@ function AttendanceContent() {
                   {filteredSessions.map((sess) => {
                     const enrolled = courseEnrollmentCounts.get(sess.course_id) || 0;
                     const present = sessionPresentCounts.get(sess.id) || 0;
-                    const pct = enrolled > 0 ? Math.round((present / enrolled) * 100) : 0;
-                    const isBelow = pct < 75;
+                    const pct = enrolled > 0 ? Math.round((present / enrolled) * 100) : null;
+                    const isBelow = pct !== null && pct < 75;
 
                     const dateObj = new Date(sess.started_at || sess.scheduled_at);
                     const formattedDate = dateObj.toLocaleDateString("en-US", {
@@ -887,19 +893,29 @@ function AttendanceContent() {
                           </div>
                         </td>
                         <td className="py-4 px-4 text-center whitespace-nowrap font-mono">
-                          <span className="text-white font-semibold">{present}</span>
-                          <span className="text-slate-500"> / {enrolled}</span>
+                          {enrolled > 0 ? (
+                            <>
+                              <span className="text-white font-semibold">{present}</span>
+                              <span className="text-slate-500"> / {enrolled}</span>
+                            </>
+                          ) : (
+                            <span className="text-slate-500 text-xs">No enrolments</span>
+                          )}
                         </td>
                         <td className="py-4 px-4 text-center whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-mono font-medium border ${
-                              isBelow
-                                ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            }`}
-                          >
-                            {pct}%
-                          </span>
+                          {pct !== null ? (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-mono font-medium border ${
+                                isBelow
+                                  ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                                  : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              }`}
+                            >
+                              {pct}%
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 font-mono text-xs">—</span>
+                          )}
                         </td>
                         <td className="py-4 px-4 text-right whitespace-nowrap">
                           <button
@@ -960,7 +976,8 @@ function AttendanceContent() {
                 </thead>
                 <tbody className="divide-y divide-white/[0.04]">
                   {filteredStudentSummaries.map((st, idx) => {
-                    const isBelow = st.attendance_percentage < 75;
+                    const hasData = st.attendance_percentage !== null;
+                    const isBelow = st.attendance_percentage !== null && st.attendance_percentage < 75;
 
                     return (
                       <tr
@@ -994,18 +1011,24 @@ function AttendanceContent() {
                           {st.total_ended_sessions}
                         </td>
                         <td className="py-4 px-4 text-center whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-mono font-bold border ${
-                              isBelow
-                                ? "bg-amber-500/10 text-amber-400 border-amber-500/30 shadow-[0_0_12px_rgba(251,191,36,0.15)]"
-                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            }`}
-                          >
-                            {st.attendance_percentage}%
-                          </span>
+                          {hasData ? (
+                            <span
+                              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-mono font-bold border ${
+                                isBelow
+                                  ? "bg-amber-500/10 text-amber-400 border-amber-500/30 shadow-[0_0_12px_rgba(251,191,36,0.15)]"
+                                  : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              }`}
+                            >
+                              {st.attendance_percentage}%
+                            </span>
+                          ) : (
+                            <span className="font-mono text-slate-500 text-xs">—</span>
+                          )}
                         </td>
                         <td className="py-4 px-4 text-right whitespace-nowrap">
-                          {isBelow ? (
+                          {!hasData ? (
+                            <span className="text-xs font-mono text-slate-500">No classes yet</span>
+                          ) : isBelow ? (
                             <span className="inline-flex items-center gap-1 text-xs text-amber-400 font-medium">
                               <AlertTriangle className="w-3.5 h-3.5" />
                               <span>Below 75% Target</span>

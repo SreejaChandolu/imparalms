@@ -62,8 +62,8 @@ export default function AdminDashboardPage() {
   const [totalUsersCount, setTotalUsersCount] = useState<number>(0);
   const [activeCoursesCount, setActiveCoursesCount] = useState<number>(0);
   const [classesHeld30Days, setClassesHeld30Days] = useState<number>(0);
-  const [platformAttendancePct, setPlatformAttendancePct] = useState<number>(100);
-  const [platformRatingAvg, setPlatformRatingAvg] = useState<number>(0);
+  const [platformAttendancePct, setPlatformAttendancePct] = useState<number | null>(null);
+  const [platformRatingAvg, setPlatformRatingAvg] = useState<number | null>(null);
   const [openTicketsCount, setOpenTicketsCount] = useState<number>(0);
 
   // Live and Upcoming Sessions
@@ -259,8 +259,10 @@ export default function AdminDashboardPage() {
             totalPresent += present;
           });
 
-          const avgPct = totalPossible > 0 ? Math.round((totalPresent / totalPossible) * 100) : 100;
+          const avgPct = totalPossible > 0 ? Math.round((totalPresent / totalPossible) * 100) : null;
           setPlatformAttendancePct(avgPct);
+        } else {
+          setPlatformAttendancePct(null);
         }
 
         // 6. Platform Rating Average
@@ -272,6 +274,8 @@ export default function AdminDashboardPage() {
         if (rawRatings.length > 0) {
           const sumStars = rawRatings.reduce((acc: number, r: any) => acc + (r.stars || 0), 0);
           setPlatformRatingAvg(Number((sumStars / rawRatings.length).toFixed(1)));
+        } else {
+          setPlatformRatingAvg(null);
         }
 
         // 7. Open Helpdesk Tickets Count
@@ -366,24 +370,34 @@ export default function AdminDashboardPage() {
         <div className="p-4 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-1">
           <div className="flex items-center justify-between text-slate-400 text-[11px] font-mono">
             <span>ATTENDANCE</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <CheckCircle2
+              className={`w-4 h-4 ${platformAttendancePct !== null ? "text-emerald-400" : "text-slate-500"}`}
+            />
           </div>
           <div className="text-2xl font-bold font-mono text-white">
-            {loading ? "—" : `${platformAttendancePct}%`}
+            {loading ? "—" : platformAttendancePct !== null ? `${platformAttendancePct}%` : "—"}
           </div>
-          <p className="text-[10px] text-slate-400">75% rule compliance</p>
+          <p className="text-[10px] text-slate-400">
+            {platformAttendancePct !== null ? "75% rule compliance" : "No classes yet"}
+          </p>
         </div>
 
         {/* Platform Rating */}
         <div className="p-4 rounded-2xl border border-white/[0.08] bg-[#070c18]/80 backdrop-blur-sm space-y-1">
           <div className="flex items-center justify-between text-slate-400 text-[11px] font-mono">
             <span>RATING</span>
-            <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+            <Star
+              className={`w-4 h-4 ${
+                platformRatingAvg !== null ? "fill-amber-400 text-amber-400" : "text-slate-500"
+              }`}
+            />
           </div>
           <div className="text-2xl font-bold font-mono text-white">
-            {loading ? "—" : platformRatingAvg > 0 ? platformRatingAvg.toFixed(1) : "—"}
+            {loading ? "—" : platformRatingAvg !== null ? platformRatingAvg.toFixed(1) : "—"}
           </div>
-          <p className="text-[10px] text-slate-400">out of 5.0 stars</p>
+          <p className="text-[10px] text-slate-400">
+            {platformRatingAvg !== null ? "out of 5.0 stars" : "No ratings yet"}
+          </p>
         </div>
 
         {/* Open Helpdesk Tickets */}
