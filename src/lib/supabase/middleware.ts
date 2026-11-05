@@ -1,9 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import type { Database } from "@/types/database";
+import type { Database, UserRole } from "@/types/database";
 
 /**
- * Updates user session cookie on incoming requests to prevent session expiry.
+ * Updates user session and enforces Role-Based Access Control (RBAC) across routes.
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -34,8 +34,90 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // IMPORTANT: Do not remove auth.getUser(); this refreshes the auth token
-  await supabase.auth.getUser();
+  const pathname = request.nextUrl.pathname;
+  const isAuthRoute = pathname === "/login" || pathname === "/signup" || pathname === "/staff";
+  const isDashboardRoute =
+    pathname.startsWith("/student") ||
+    pathname.startsWith("/teacher") ||
+    pathname.startsWith("/admin");
+
+  // Only run role checks on auth and dashboard routes to minimize network calls
+  if (!isAuthRoute && !isDashboardRoute) {
+    return supabaseResponse;
+  }
+
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // If Supabase network is unreachable (e.g. offline/sandbox build), proceed safely
+    return supabaseResponse;
+  }
+
+  // 1. Unauthenticated users trying to access protected dashboards
+  if (!user) {
+    if (pathname.startsWith("/student")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
+    if (pathname.startsWith("/teacher") || pathname.startsWith("/admin")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/staff";
+      return NextResponse.redirect(url);
+    }
+    return supabaseResponse;
+  }
+
+  // 2. Fetch authenticated user's role from profiles
+  let userRole: UserRole = "student";
+  try {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+
+    const userProfile = profile as unknown as { role?: UserRole } | null;
+    if (userProfile?.role) {
+      userRole = userProfile.role;
+    }
+  } catch {
+    userRole = "student";
+  }
+
+  // 3. If accessing /student, /teacher, /admin, redirect wrong roles to their own dashboard
+  if (pathname.startsWith("/student") && userRole !== "student") {
+    const url = request.nextUrl.clone();
+    url.pathname = userRole === "admin" ? "/admin" : "/teacher";
+    return NextResponse.redirect(url);
+  }
+
+  if (pathname.startsWith("/teacher") && userRole !== "teacher") {
+    const url = request.nextUrl.clone();
+    url.pathname = userRole === "admin" ? "/admin" : "/student";
+    return NextResponse.redirect(url);
+  }
+
+  if (pathname.startsWith("/admin") && userRole !== "admin") {
+    const url = request.nextUrl.clone();
+    url.pathname = userRole === "teacher" ? "/teacher" : "/student";
+    return NextResponse.redirect(url);
+  }
+
+  // 4. If logged-in user visits auth pages (/login, /signup, /staff), redirect to their role dashboard
+  if (pathname === "/login" || pathname === "/signup") {
+    const url = request.nextUrl.clone();
+    url.pathname = userRole === "admin" ? "/admin" : userRole === "teacher" ? "/teacher" : "/student";
+    return NextResponse.redirect(url);
+  }
+
+  if (pathname === "/staff") {
+    const url = request.nextUrl.clone();
+    url.pathname = userRole === "admin" ? "/admin" : userRole === "teacher" ? "/teacher" : "/student";
+    return NextResponse.redirect(url);
+  }
 
   return supabaseResponse;
 }
