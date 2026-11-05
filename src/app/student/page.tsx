@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { getFirstName } from "@/lib/utils";
 import {
   BookOpen,
   Calendar,
@@ -76,7 +77,7 @@ export default function StudentDashboardPage() {
           .single()) as { data: { full_name?: string } | null; error: unknown };
 
         const fullName = profile?.full_name?.trim() || "";
-        const fName = fullName ? fullName.split(" ")[0] : "Student";
+        const fName = getFirstName(fullName || user.email?.split("@")[0], "Student");
         setFirstName(fName);
 
         // 3. Fetch student's course enrollments

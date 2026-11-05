@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { getFirstNameAndInitial } from "@/lib/utils";
 import { LogOut, User, ChevronDown } from "lucide-react";
 
 export default function StudentLayout({
@@ -36,9 +37,10 @@ export default function StudentLayout({
         .eq("id", user.id)
         .single()) as { data: { full_name?: string } | null; error: any };
 
-      const name = profile?.full_name?.trim() || user.email?.split("@")[0] || "Student";
-      setStudentName(name);
-      setStudentInitial(name.charAt(0).toUpperCase());
+      const rawName = profile?.full_name?.trim() || user.email?.split("@")[0] || "Student";
+      const { initial } = getFirstNameAndInitial(rawName, "Student");
+      setStudentName(rawName);
+      setStudentInitial(initial);
     }
 
     fetchStudentProfile();

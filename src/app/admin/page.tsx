@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { getFirstNameAndInitial } from "@/lib/utils";
 import type { Profile, SecurityEvent } from "@/types/database";
 import {
   LogOut,
@@ -91,6 +92,11 @@ export default function AdminDashboard() {
   const teacherCount = profiles.filter((p) => p.role === "teacher").length;
   const adminCount = profiles.filter((p) => p.role === "admin").length;
 
+  const { firstName: adminFirstName, initial: adminInitial } = getFirstNameAndInitial(
+    profile?.full_name,
+    "Admin"
+  );
+
   return (
     <div className="min-h-screen bg-[#04060a] text-slate-100 flex flex-col selection:bg-[#29d9ff]/30 selection:text-white">
       {/* Top Navigation */}
@@ -110,9 +116,14 @@ export default function AdminDashboard() {
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="font-mono text-xs text-slate-400 bg-white/[0.04] px-3 py-1 rounded-full border border-white/[0.06]">
-              Admin: {profile?.full_name || "Superuser"}
-            </span>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-400 font-mono font-bold text-xs flex items-center justify-center shadow-[0_0_12px_rgba(168,85,247,0.2)]">
+                {adminInitial}
+              </div>
+              <span className="font-mono text-xs text-slate-400 bg-white/[0.04] px-3 py-1 rounded-full border border-white/[0.06]">
+                Admin: {adminFirstName}
+              </span>
+            </div>
             <button
               onClick={handleSignOut}
               className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-4 py-1.5 text-xs font-mono uppercase tracking-wider text-slate-300 hover:text-rose-400 hover:border-rose-400/40 hover:bg-rose-500/10 transition-all"
@@ -136,10 +147,10 @@ export default function AdminDashboard() {
                 SYSTEM CONTROL PLANE
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold text-white">
-                Platform Overview & Security Audit
+                Welcome back, {adminFirstName}!
               </h1>
               <p className="mt-1 text-sm text-slate-400">
-                Postgres Row Level Security and server boundary role enforcement are active.
+                Platform Overview & Security Audit. Postgres Row Level Security and server boundary role enforcement are active.
               </p>
             </div>
 
