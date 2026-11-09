@@ -14,6 +14,8 @@ import {
   Layers,
   AlertCircle,
   Play,
+  Square,
+  Loader2,
 } from "lucide-react";
 
 interface TeacherCourse {
@@ -52,7 +54,8 @@ function TeacherHostContent() {
   const [courses, setCourses] = useState<TeacherCourse[]>([]);
   const [topics, setTopics] = useState<TeacherTopic[]>([]);
   const [scheduledSessions, setScheduledSessions] = useState<ScheduledSessionOption[]>([]);
-  const [activeLiveSession, setActiveLiveSession] = useState<ScheduledSessionOption | null>(null);
+  const [liveSessions, setLiveSessions] = useState<ScheduledSessionOption[]>([]);
+  const [endingSessionId, setEndingSessionId] = useState<string | null>(null);
 
   // Host Mode: 'scheduled' or 'instant'
   const [mode, setMode] = useState<"scheduled" | "instant">("scheduled");
@@ -155,11 +158,9 @@ function TeacherHostContent() {
           topicTitle: (s.topic_id && topicMap.get(s.topic_id)) || "General Topic",
         }));
 
-        // Check if there is already a live session
-        const currentlyLive = enriched.find((s) => s.status === "live");
-        if (currentlyLive) {
-          setActiveLiveSession(currentlyLive);
-        }
+        // Check all currently live sessions for this teacher
+        const currentlyLive = enriched.filter((s) => s.status === "live");
+        setLiveSessions(currentlyLive);
 
         const onlyScheduled = enriched.filter((s) => s.status === "scheduled");
         setScheduledSessions(onlyScheduled);
@@ -295,6 +296,39 @@ function TeacherHostContent() {
     }
   };
 
+  const handleEndClass = async (sessionId: string, sessionTitle: string) => {
+    if (
+      !confirm(
+        `Are you sure you want to end "${sessionTitle}"? This will conclude the session, disconnect attendees, and finalize attendance telemetry.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setEndingSessionId(sessionId);
+      setErrorMsg(null);
+
+      const res = await fetch("/api/livekit/end-class", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to end class.");
+      }
+
+      setLiveSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    } catch (err: any) {
+      console.error("Error concluding live session:", err);
+      setErrorMsg(err.message || "Failed to conclude session.");
+    } finally {
+      setEndingSessionId(null);
+    }
+  };
+
   return (
     <div className="space-y-8 sm:space-y-10 max-w-4xl mx-auto">
       {/* ─────────────────────────────────────────────────────────────
@@ -322,27 +356,50 @@ function TeacherHostContent() {
         </div>
       </div>
 
-      {/* Active Live Session Alert */}
-      {activeLiveSession && (
-        <div className="p-4 rounded-2xl border border-red-500/40 bg-red-950/20 shadow-[0_0_20px_rgba(239,68,68,0.2)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-red-400 bg-red-500/15 px-2.5 py-0.5 rounded-full border border-red-500/30 font-bold">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-              <span>ACTIVE SESSION IN PROGRESS</span>
-            </div>
-            <h3 className="text-base font-bold text-white">{activeLiveSession.title}</h3>
-            <p className="text-xs text-slate-300 font-mono">
-              {activeLiveSession.courseTitle} • {activeLiveSession.topicTitle}
-            </p>
-          </div>
+      {/* Active Live Sessions Alert List */}
+      {liveSessions.length > 0 && (
+        <div className="space-y-3">
+          {liveSessions.map((ls) => (
+            <div
+              key={ls.id}
+              className="p-4 rounded-2xl border border-red-500/40 bg-red-950/20 shadow-[0_0_20px_rgba(239,68,68,0.2)] flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+            >
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-red-400 bg-red-500/15 px-2.5 py-0.5 rounded-full border border-red-500/30 font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+                  <span>ACTIVE LIVE SESSION</span>
+                </div>
+                <h3 className="text-base font-bold text-white">{ls.title}</h3>
+                <p className="text-xs text-slate-300 font-mono">
+                  {ls.courseTitle} • {ls.topicTitle}
+                </p>
+              </div>
 
-          <Link
-            href={`/live/${activeLiveSession.id}`}
-            className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-red-500 hover:bg-red-400 text-white font-mono text-xs uppercase tracking-wider font-bold shadow-[0_0_15px_rgba(239,68,68,0.5)] transition-all animate-pulse whitespace-nowrap self-start sm:self-center"
-          >
-            <Radio className="w-4 h-4" />
-            <span>Return to Room</span>
-          </Link>
+              <div className="flex items-center gap-2 self-start sm:self-center">
+                <Link
+                  href={`/live/${ls.id}`}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-500 hover:bg-red-400 text-white font-mono text-xs uppercase tracking-wider font-bold shadow-[0_0_15px_rgba(239,68,68,0.5)] transition-all whitespace-nowrap"
+                >
+                  <Radio className="w-4 h-4 animate-pulse" />
+                  <span>Return to Room</span>
+                </Link>
+
+                <button
+                  type="button"
+                  disabled={endingSessionId === ls.id}
+                  onClick={() => handleEndClass(ls.id, ls.title)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/[0.06] hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 border border-white/[0.1] hover:border-rose-500/30 font-mono text-xs uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {endingSessionId === ls.id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Square className="w-3.5 h-3.5 text-rose-400" />
+                  )}
+                  <span>End Class</span>
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
